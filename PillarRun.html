@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Pillar Racer Pro</title>
+    <style>
+        body { margin: 0; background: #000; color: white; font-family: 'Courier Prime', monospace; overflow: hidden; height: 100vh; display: flex; justify-content: center; align-items: center; }
+        #game-container { position: relative; width: 1000px; height: 600px; border: 4px solid #1a1a1a; background: #111; }
+        canvas { display: block; image-rendering: pixelated; }
+        .hud { position: absolute; top: 20px; width: 100%; text-align: center; pointer-events: none; font-size: 50px; font-weight: 900; }
+        #ghost-toggle { position: absolute; bottom: 20px; right: 20px; cursor: pointer; background: #222; padding: 10px; font-size: 12px; z-index: 100; }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <canvas id="canvas" width="1000" height="600"></canvas>
+    <div class="hud" id="timer">0.000</div>
+    <div id="ghost-toggle" onclick="toggleGhost()">GHOST: <span id="g-status">ON</span></div>
+</div>
+
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+
+let player = { x: 100, y: 300, vx: 0, vy: 0, w: 20, h: 20, scaleX: 1, scaleY: 1, grounded: false };
+let particles = [];
+let showGhost = true;
+let ghostData = JSON.parse(localStorage.getItem('bestRun') || "[]");
+let currentRun = [];
+let startTime = Date.now();
+
+// Level Setup
+const pillars = Array.from({length: 20}, (_, i) => ({
+    x: i * 250 + 50, y: 300 + (Math.random() * 200), w: 80, h: 600,
+    cracked: Math.random() > 0.7, falling: false
+}));
+
+function toggleGhost() {
+    showGhost = !showGhost;
+    document.getElementById('g-status').innerText = showGhost ? "ON" : "OFF";
+}
+
+function spawnDust(x, y) {
+    for(let i=0; i<8; i++) {
+        particles.push({ x, y, vx: (Math.random()-0.5)*4, vy: -Math.random()*2, life: 1.0 });
+    }
+}
+
+function update() {
+    let wasGrounded = player.grounded;
+    player.vy += 0.6;
+    player.x += player.vx;
+    player.y += player.vy;
+    
+    player.grounded = false;
+    pillars.forEach(p => {
+        if(p.falling) p.y += 10;
+        if (!p.falling && player.x < p.x + p.w && player.x + player.w > p.x && player.y + player.h > p.y && player.y + player.h < p.y + 20) {
+            player.y = p.y - player.h;
+            player.vy = 0;
+            if(!player.grounded && !wasGrounded) spawnDust(player.x, player.y + 20);
+            player.grounded = true;
+            if(p.cracked) p.falling = true;
+        }
+    });
+
+    // Particle Cleanup
+    particles.forEach((p, i) => { p.x += p.vx; p.y += p.vy; p.life -= 0.05; if(p.life <= 0) particles.splice(i, 1); });
+    currentRun.push({x: player.x, y: player.y});
+    document.getElementById('timer').innerText = ((Date.now() - startTime)/1000).toFixed(3);
+}
+
+function draw() {
+    ctx.fillStyle = "#4da6ff"; ctx.fillRect(0,0,1000,600);
+    
+    // Ghost Playback
+    if(showGhost && ghostData.length > 0) {
+        let frame = Math.floor((Date.now() - startTime) / 16);
+        if(ghostData[frame]) {
+            ctx.fillStyle = "rgba(255,255,255,0.2)";
+            ctx.fillRect(ghostData[frame].x - (player.x - 400), ghostData[frame].y, 20, 20);
+        }
+    }
+
+    // Draw Pillars
+    ctx.save();
+    ctx.translate(-(player.x - 400), 0);
+    pillars.forEach(p => {
+        ctx.fillStyle = p.cracked ? "#b71c1c" : "#888";
+        ctx.fillRect(p.x, p.y, p.w, p.h);
+    });
+
+    // Player
+    ctx.fillStyle = "white";
+    ctx.fillRect(player.x, player.y, player.w, player.h);
+    ctx.restore();
+
+    // Particles
+    particles.forEach(p => { ctx.fillStyle = "white"; ctx.globalAlpha = p.life; ctx.fillRect(p.x - (player.x - 400), p.y, 4, 4); });
+    ctx.globalAlpha = 1.0;
+
+    update();
+    requestAnimationFrame(draw);
+}
+
+window.onkeydown = e => { 
+    if(e.code === 'Space' && player.grounded) player.vy = -12; 
+    if(e.code === 'ArrowRight') player.vx = 5;
+    if(e.code === 'ArrowLeft') player.vx = -5;
+    if(e.code === 'KeyR') location.reload();
+};
+window.onkeyup = e => player.vx = 0;
+
+draw();
+</script>
+</body>
+</html>
